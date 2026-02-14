@@ -1,18 +1,16 @@
-[project]
-name = "src"
-version = "0.1.0"
-description = ""
-authors = [
-    {name = "Ashkan Goharfar",email = "ashkan.goharfar@gmail.com"}
-]
-readme = "README.md"
-requires-python = ">=3.13"
-dependencies = [
-]
-
 [tool.poetry]
-packages = [{include = "src", from = "src"}]
+name = "bookmaker-scraper"
+version = "0.1.0"
+description = "WebSocket scraper for Bookmaker.eu real-time odds data"
+authors = ["Ashkan Goharfar <ashkan.goharfar@gmail.com>"]
+readme = "README.md"
+packages = [{include = "src"}]
+
+[tool.poetry.dependencies]
+python = "^3.10"
+
+[tool.poetry.group.dev.dependencies]
 
 [build-system]
-requires = ["poetry-core>=2.0.0,<3.0.0"]
+requires = ["poetry-core>=2.0.0"]
 build-backend = "poetry.core.masonry.api"
