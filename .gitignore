@@ -11,9 +11,6 @@ venv/
 dist/
 build/
 
-# Poetry
-poetry.lock
-
 # Environment
 .env
 
@@ -23,9 +20,8 @@ poetry.lock
 *.swp
 *.swo
 
-# Logs
-logs/
-*.log
+# Logs (keep directory but ignore log files)
+logs/*.log
 
 # Testing
 .pytest_cache/
