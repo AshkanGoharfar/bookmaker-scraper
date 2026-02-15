@@ -63,7 +63,9 @@ MAX_MESSAGES_TO_LOG = 10  # Only log first 10 messages in detail
 async def run_integration_test(
     username: str,
     password: str,
-    duration: int = LISTEN_DURATION
+    duration: int = LISTEN_DURATION,
+    use_stealth: bool = True,
+    manual_cookie: Optional[str] = None
 ) -> None:
     """
     Run automated integration test with real WebSocket connection.
@@ -72,6 +74,8 @@ async def run_integration_test(
         username: Bookmaker.eu username (from .env or argument)
         password: Bookmaker.eu password (from .env or argument)
         duration: How long to listen for messages (seconds)
+        use_stealth: Enable stealth mode for anti-detection (default: True)
+        manual_cookie: Optional manual cookie string (bypasses authentication)
     """
     logger.info("=" * 80)
     logger.info("BOOKMAKER.EU WEBSOCKET INTEGRATION TEST")
@@ -84,28 +88,36 @@ async def run_integration_test(
     start_time = datetime.now()
 
     try:
-        # Step 1: Authenticate
-        logger.info("STEP 1: Authenticating to get session cookie...")
-        logger.info("-" * 80)
-        logger.info(f"Username: {username}")
+        # Step 1: Authenticate (or use manual cookie)
+        if manual_cookie:
+            logger.info("STEP 1: Using manual cookie (bypass authentication)...")
+            logger.info("-" * 80)
+            cookie = manual_cookie
+            logger.info(f"✅ Manual cookie loaded ({len(cookie)} chars)")
+            logger.info("")
+        else:
+            logger.info("STEP 1: Authenticating to get session cookie...")
+            logger.info("-" * 80)
+            logger.info(f"Username: {username}")
+            logger.info(f"Stealth mode: {'🥷 ENABLED' if use_stealth else '❌ DISABLED'}")
 
-        authenticator = BookmakerAuth(username, password)
+            authenticator = BookmakerAuth(username, password)
 
-        # Login
-        session_cookie = await authenticator.login()
+            # Login with stealth mode
+            session_cookie = await authenticator.login(stealth_mode=use_stealth)
 
-        if not session_cookie:
-            logger.error("❌ Authentication failed!")
-            return
+            if not session_cookie:
+                logger.error("❌ Authentication failed!")
+                return
 
-        # Get ALL cookies for WebSocket (needed for cross-domain: www → be)
-        cookie = authenticator.get_all_cookies_header()
+            # Get ALL cookies for WebSocket (needed for cross-domain: www → be)
+            cookie = authenticator.get_all_cookies_header()
 
-        logger.info(f"✅ Authenticated successfully!")
-        logger.info(f"Session cookie name: {authenticator.session_cookie_name}")
-        logger.info(f"Session cookie value: {session_cookie[:30]}...")
-        logger.info(f"Total cookies: {len(authenticator.all_cookies)}")
-        logger.info("")
+            logger.info(f"✅ Authenticated successfully!")
+            logger.info(f"Session cookie name: {authenticator.session_cookie_name}")
+            logger.info(f"Session cookie value: {session_cookie[:30]}...")
+            logger.info(f"Total cookies: {len(authenticator.all_cookies)}")
+            logger.info("")
 
         # Step 2: Connect to WebSocket
         logger.info("STEP 2: Connecting to WebSocket...")
@@ -262,14 +274,20 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  # Use credentials from .env (default)
+  # Stealth mode with .env credentials (default - tries to evade detection)
   poetry run python tests/manual/test_websocket_integration.py
 
-  # Short 1-minute test
-  poetry run python tests/manual/test_websocket_integration.py -d 60
+  # Disable stealth mode (faster but might be detected)
+  poetry run python tests/manual/test_websocket_integration.py --no-stealth
 
-  # Override credentials
-  poetry run python tests/manual/test_websocket_integration.py -u myuser -p mypass
+  # Use manual cookie (100%% reliable fallback)
+  poetry run python tests/manual/test_websocket_integration.py --manual-cookie "ASP.NET_SessionId=xxx; ..."
+
+  # Short 30-second test
+  poetry run python tests/manual/test_websocket_integration.py -d 30
+
+  # Override credentials (example with placeholder values)
+  poetry run python tests/manual/test_websocket_integration.py -u YOUR_USERNAME -p YOUR_PASSWORD
         """
     )
     parser.add_argument(
@@ -286,8 +304,28 @@ Examples:
         default=LISTEN_DURATION,
         help=f"How long to listen for messages in seconds (default: {LISTEN_DURATION})"
     )
+    parser.add_argument(
+        "--no-stealth",
+        action="store_true",
+        help="Disable stealth mode (use basic authentication)"
+    )
+    parser.add_argument(
+        "--manual-cookie",
+        help="Use manual cookie instead of authentication (paste full cookie string)"
+    )
 
     args = parser.parse_args()
+
+    # Manual cookie mode (bypasses authentication)
+    if args.manual_cookie:
+        logger.info("Using manual cookie mode...")
+        asyncio.run(run_integration_test(
+            username="",
+            password="",
+            duration=args.duration,
+            manual_cookie=args.manual_cookie
+        ))
+        sys.exit(0)
 
     # Get credentials: CLI args override .env
     username = args.username or os.getenv("BOOKMAKER_USERNAME")
@@ -299,14 +337,18 @@ Examples:
         logger.error("   Either:")
         logger.error("   1. Set BOOKMAKER_USERNAME and BOOKMAKER_PASSWORD in .env file")
         logger.error("   2. Provide --username and --password arguments")
+        logger.error("   3. Use --manual-cookie with a cookie string")
         sys.exit(1)
 
     # Run the test
+    use_stealth = not args.no_stealth
+
     try:
         asyncio.run(run_integration_test(
             username=username,
             password=password,
-            duration=args.duration
+            duration=args.duration,
+            use_stealth=use_stealth
         ))
     except KeyboardInterrupt:
         logger.info("\n\n⚠️  Test interrupted by user")

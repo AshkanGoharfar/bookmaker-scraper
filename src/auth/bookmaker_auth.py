@@ -4,6 +4,7 @@ Handles automated login and session cookie extraction using Playwright.
 """
 
 import asyncio
+import random
 from typing import Optional
 from playwright.async_api import async_playwright, Browser, Page
 from src.utils.logger import setup_logger
@@ -42,12 +43,13 @@ class BookmakerAuth:
         self.all_cookies: list = []
         logger.debug(f"BookmakerAuth initialized for user: {username}")
 
-    async def login(self, max_retries: int = 3) -> str:
+    async def login(self, max_retries: int = 3, stealth_mode: bool = True) -> str:
         """
-        Perform automated login with retry logic.
+        Perform automated login with retry logic and optional stealth mode.
 
         Args:
             max_retries: Maximum number of retry attempts (default: 3)
+            stealth_mode: Enable enhanced anti-detection features (default: True)
 
         Returns:
             Session cookie value
@@ -60,7 +62,7 @@ class BookmakerAuth:
         for attempt in range(1, max_retries + 1):
             try:
                 logger.info(f"Login attempt {attempt}/{max_retries}...")
-                return await self._attempt_login()
+                return await self._attempt_login(stealth_mode=stealth_mode)
             except (ConnectionError, TimeoutError) as e:
                 last_error = e
                 logger.warning(f"Attempt {attempt} failed: {e}")
@@ -74,9 +76,12 @@ class BookmakerAuth:
 
         raise AuthenticationError(f"Login failed after {max_retries} attempts") from last_error
 
-    async def _attempt_login(self) -> str:
+    async def _attempt_login(self, stealth_mode: bool = True) -> str:
         """
         Single login attempt (extracted for retry logic).
+
+        Args:
+            stealth_mode: Enable enhanced anti-detection features
 
         Returns:
             Session cookie value
@@ -87,30 +92,84 @@ class BookmakerAuth:
             TimeoutError: If page load times out
         """
         async with async_playwright() as p:
-            # Launch browser with anti-detection settings
+            # Enhanced browser launch arguments
+            launch_args = [
+                '--disable-blink-features=AutomationControlled',  # Hide automation
+                '--disable-dev-shm-usage',
+                '--no-sandbox'
+            ]
+
+            if stealth_mode:
+                logger.info("🥷 Stealth mode: Enhanced anti-detection enabled")
+                launch_args.extend([
+                    '--disable-web-security',
+                    '--disable-features=IsolateOrigins,site-per-process',
+                    '--disable-setuid-sandbox'
+                ])
+
+            # Launch browser
             browser = await p.chromium.launch(
                 headless=True,
-                args=[
-                    '--disable-blink-features=AutomationControlled',  # Hide automation
-                    '--disable-dev-shm-usage',
-                    '--no-sandbox'
-                ]
+                args=launch_args
             )
-            logger.debug("Browser launched with anti-detection")
+            logger.debug(f"Browser launched ({'stealth' if stealth_mode else 'standard'} mode)")
 
             try:
-                # Create page with realistic user agent and viewport
-                page = await browser.new_page(
-                    user_agent='Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                    viewport={'width': 1920, 'height': 1080}
-                )
+                # Enhanced context options for stealth
+                context_options = {
+                    'user_agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                    'viewport': {'width': 1920, 'height': 1080}
+                }
 
-                # Remove webdriver property (anti-detection)
-                await page.add_init_script("""
-                    Object.defineProperty(navigator, 'webdriver', {
-                        get: () => undefined
-                    });
-                """)
+                if stealth_mode:
+                    context_options.update({
+                        'locale': 'en-US',
+                        'timezone_id': 'America/New_York',
+                        'permissions': ['geolocation'],
+                    })
+
+                # Create page with enhanced settings
+                page = await browser.new_page(**context_options)
+
+                # Enhanced anti-detection scripts
+                if stealth_mode:
+                    await page.add_init_script("""
+                        // Remove webdriver property
+                        Object.defineProperty(navigator, 'webdriver', {
+                            get: () => undefined
+                        });
+
+                        // Override plugins to appear real
+                        Object.defineProperty(navigator, 'plugins', {
+                            get: () => [1, 2, 3, 4, 5]
+                        });
+
+                        // Override languages
+                        Object.defineProperty(navigator, 'languages', {
+                            get: () => ['en-US', 'en']
+                        });
+
+                        // Add chrome object
+                        window.chrome = { runtime: {} };
+
+                        // Override permissions
+                        const originalQuery = window.navigator.permissions.query;
+                        window.navigator.permissions.query = (parameters) => (
+                            parameters.name === 'notifications' ?
+                                Promise.resolve({ state: Notification.permission }) :
+                                originalQuery(parameters)
+                        );
+
+                        // Hide automation
+                        delete navigator.__proto__.webdriver;
+                    """)
+                else:
+                    # Basic anti-detection
+                    await page.add_init_script("""
+                        Object.defineProperty(navigator, 'webdriver', {
+                            get: () => undefined
+                        });
+                    """)
                 # Login form is on the homepage in the header
                 await page.goto("https://www.bookmaker.eu/", timeout=30000)
                 logger.debug("Navigated to homepage")
@@ -126,12 +185,47 @@ class BookmakerAuth:
                 await page.wait_for_selector("input#account", state="visible", timeout=10000)
                 logger.debug("Login form found")
 
-                # Human-like typing with delays
-                await page.type("input#account", self.username, delay=100)  # 100ms between keystrokes
-                await asyncio.sleep(0.5)
-                await page.type("input#password", self.password, delay=100)
-                await asyncio.sleep(0.5)
-                logger.debug("Credentials filled")
+                if stealth_mode:
+                    # Stealth: More human-like behavior
+                    # Random mouse movement
+                    await page.mouse.move(random.randint(100, 300), random.randint(100, 300))
+                    await asyncio.sleep(random.uniform(0.3, 0.8))
+
+                    # Click on username field (humans click before typing)
+                    await page.click("input#account")
+                    await asyncio.sleep(random.uniform(0.2, 0.5))
+
+                    # Type with random delays (humans type unevenly)
+                    for char in self.username:
+                        await page.keyboard.type(char)
+                        await asyncio.sleep(random.uniform(0.05, 0.20))
+
+                    await asyncio.sleep(random.uniform(0.5, 1.0))
+
+                    # Click on password field
+                    await page.click("input#password")
+                    await asyncio.sleep(random.uniform(0.2, 0.5))
+
+                    # Type password with random delays
+                    for char in self.password:
+                        await page.keyboard.type(char)
+                        await asyncio.sleep(random.uniform(0.05, 0.20))
+
+                    await asyncio.sleep(random.uniform(0.5, 1.0))
+
+                    # Random mouse movement before clicking submit
+                    await page.mouse.move(random.randint(400, 600), random.randint(300, 500))
+                    await asyncio.sleep(random.uniform(0.3, 0.7))
+
+                    logger.debug("Credentials filled (stealth mode - human-like)")
+
+                else:
+                    # Standard: Fast typing
+                    await page.type("input#account", self.username, delay=100)
+                    await asyncio.sleep(0.5)
+                    await page.type("input#password", self.password, delay=100)
+                    await asyncio.sleep(0.5)
+                    logger.debug("Credentials filled")
 
                 # Click login button and wait for navigation
                 await page.click("input[type='submit'][value='Login']")
