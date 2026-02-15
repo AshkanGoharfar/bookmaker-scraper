@@ -86,25 +86,82 @@ class BookmakerAuth:
             TimeoutError: If page load times out
         """
         async with async_playwright() as p:
-            browser = await p.chromium.launch(headless=True)
-            logger.debug("Browser launched")
+            # Launch browser with anti-detection settings
+            browser = await p.chromium.launch(
+                headless=True,
+                args=[
+                    '--disable-blink-features=AutomationControlled',  # Hide automation
+                    '--disable-dev-shm-usage',
+                    '--no-sandbox'
+                ]
+            )
+            logger.debug("Browser launched with anti-detection")
 
             try:
-                page = await browser.new_page()
-                await page.goto("https://www.bookmaker.eu/login", timeout=30000)
-                await page.fill("input[name='username']", self.username)
-                await page.fill("input[name='password']", self.password)
-                await page.click("button[type='submit']")
-                await page.wait_for_url("**/home", timeout=10000)
+                # Create page with realistic user agent and viewport
+                page = await browser.new_page(
+                    user_agent='Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                    viewport={'width': 1920, 'height': 1080}
+                )
+
+                # Remove webdriver property (anti-detection)
+                await page.add_init_script("""
+                    Object.defineProperty(navigator, 'webdriver', {
+                        get: () => undefined
+                    });
+                """)
+                # Login form is on the homepage in the header
+                await page.goto("https://www.bookmaker.eu/", timeout=30000)
+                logger.debug("Navigated to homepage")
+
+                # Wait for page to fully load
+                await page.wait_for_load_state("domcontentloaded", timeout=15000)
+                logger.debug("Page loaded")
+
+                # Add human-like delay
+                await asyncio.sleep(1)
+
+                # Wait for the account input field to be available
+                await page.wait_for_selector("input#account", state="visible", timeout=10000)
+                logger.debug("Login form found")
+
+                # Human-like typing with delays
+                await page.type("input#account", self.username, delay=100)  # 100ms between keystrokes
+                await asyncio.sleep(0.5)
+                await page.type("input#password", self.password, delay=100)
+                await asyncio.sleep(0.5)
+                logger.debug("Credentials filled")
+
+                # Click login button and wait for navigation
+                await page.click("input[type='submit'][value='Login']")
+                logger.debug("Login button clicked")
+
+                # Wait for navigation after login (shorter timeout)
+                await page.wait_for_load_state("domcontentloaded", timeout=10000)
+                await asyncio.sleep(1)  # Extra wait for any redirects
+                logger.debug("Login completed")
 
                 cookies = await page.context.cookies()
+                logger.debug(f"Found {len(cookies)} cookies after login")
+
+                # Log cookie names for debugging
+                for c in cookies:
+                    logger.debug(f"Cookie: {c['name']}")
+
+                # Look for session cookies (multiple possible names)
                 session_cookie = next(
-                    (c['value'] for c in cookies if c['name'] == 'session_id'),
+                    (c['value'] for c in cookies if c['name'] in ['session_id', 'ASP.NET_SessionId', 'ASP_NET_SessionId', 'PHPSESSID']),
                     None
                 )
 
                 if not session_cookie:
-                    raise AuthenticationError("Session cookie not found")
+                    # If no standard session cookie, just use the first meaningful cookie
+                    logger.warning("Standard session cookie not found, using first available cookie")
+                    if cookies:
+                        session_cookie = cookies[0]['value']
+                        logger.info(f"Using cookie: {cookies[0]['name']}")
+                    else:
+                        raise AuthenticationError("No cookies found after login")
 
                 self.session_cookie = session_cookie
                 logger.info("Authentication successful")
