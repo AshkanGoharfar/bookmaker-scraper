@@ -117,6 +117,10 @@ class StompClient:
 
             logger.info(f"STOMP connected successfully. Session: {self.session_id}")
 
+            # Start heartbeat background task
+            self.heartbeat_task = asyncio.create_task(self._heartbeat_loop())
+            logger.debug("Heartbeat task started")
+
         except Exception as e:
             # Close WebSocket on error
             if self.ws:
@@ -230,7 +234,28 @@ class StompClient:
 
         Cancels heartbeat task and closes WebSocket connection.
         """
-        raise NotImplementedError("To be implemented in M1.4.9")
+        logger.info("Disconnecting...")
+
+        # Cancel heartbeat task if running
+        if self.heartbeat_task and not self.heartbeat_task.done():
+            self.heartbeat_task.cancel()
+            try:
+                await self.heartbeat_task
+            except asyncio.CancelledError:
+                logger.debug("Heartbeat task cancelled")
+
+        # Close WebSocket connection
+        if self.ws:
+            await self.ws.close()
+            logger.debug("WebSocket closed")
+
+        # Reset connection state
+        self.connected = False
+        self.session_id = None
+        self.ws = None
+        self.heartbeat_task = None
+
+        logger.info("Disconnected successfully")
 
     async def _heartbeat_loop(self) -> None:
         """
@@ -238,4 +263,25 @@ class StompClient:
 
         Sends empty frame (\x00) to keep connection alive.
         """
-        raise NotImplementedError("To be implemented in M1.4.9")
+        logger.debug("Heartbeat loop started")
+
+        try:
+            while True:
+                # Wait 20 seconds
+                await asyncio.sleep(20)
+
+                # Send heartbeat
+                if self.ws and self.connected:
+                    heartbeat = encode_heartbeat()
+                    await self.ws.send(heartbeat)
+                    logger.debug("Heartbeat sent")
+                else:
+                    logger.warning("Cannot send heartbeat - not connected")
+                    break
+
+        except asyncio.CancelledError:
+            logger.debug("Heartbeat loop cancelled")
+            raise
+        except Exception as e:
+            logger.error(f"Error in heartbeat loop: {e}")
+            raise
