@@ -73,16 +73,17 @@ class StompClient:
         """
         logger.info(f"Connecting to {url}...")
 
-        # Open WebSocket connection with cookie in headers
+        # Open WebSocket connection with cookie and required headers
         headers = {
             "Cookie": cookie,
+            "Origin": "https://www.bookmaker.eu",  # Required by server
             "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
                          "AppleWebKit/537.36 (KHTML, like Gecko) "
                          "Chrome/120.0.0.0 Safari/537.36"
         }
 
         try:
-            self.ws = await websockets.connect(url, extra_headers=headers)
+            self.ws = await websockets.connect(url, additional_headers=headers)
             logger.debug("WebSocket connection established")
         except Exception as e:
             raise ConnectionError(f"Failed to connect to WebSocket: {e}") from e

@@ -38,6 +38,8 @@ class BookmakerAuth:
         self.username = username
         self.password = password
         self.session_cookie: Optional[str] = None
+        self.session_cookie_name: Optional[str] = None
+        self.all_cookies: list = []
         logger.debug(f"BookmakerAuth initialized for user: {username}")
 
     async def login(self, max_retries: int = 3) -> str:
@@ -143,46 +145,67 @@ class BookmakerAuth:
                 cookies = await page.context.cookies()
                 logger.debug(f"Found {len(cookies)} cookies after login")
 
-                # Log cookie names for debugging
+                # Store all cookies for later use
+                self.all_cookies = cookies
+
+                # Log cookie names and domains for debugging
                 for c in cookies:
-                    logger.debug(f"Cookie: {c['name']}")
+                    logger.debug(f"Cookie: {c['name']} (domain: {c.get('domain', 'N/A')})")
 
                 # Look for session cookies (multiple possible names)
-                session_cookie = next(
-                    (c['value'] for c in cookies if c['name'] in ['session_id', 'ASP.NET_SessionId', 'ASP_NET_SessionId', 'PHPSESSID']),
+                session_cookie_obj = next(
+                    (c for c in cookies if c['name'] in ['session_id', 'ASP.NET_SessionId', 'ASP_NET_SessionId', 'PHPSESSID']),
                     None
                 )
 
-                if not session_cookie:
+                if not session_cookie_obj:
                     # If no standard session cookie, just use the first meaningful cookie
                     logger.warning("Standard session cookie not found, using first available cookie")
                     if cookies:
-                        session_cookie = cookies[0]['value']
-                        logger.info(f"Using cookie: {cookies[0]['name']}")
+                        session_cookie_obj = cookies[0]
+                        logger.info(f"Using cookie: {session_cookie_obj['name']}")
                     else:
                         raise AuthenticationError("No cookies found after login")
 
-                self.session_cookie = session_cookie
-                logger.info("Authentication successful")
-                return session_cookie
+                self.session_cookie = session_cookie_obj['value']
+                self.session_cookie_name = session_cookie_obj['name']
+                logger.info(f"Authentication successful (cookie: {self.session_cookie_name})")
+                return session_cookie_obj['value']
 
             finally:
                 await browser.close()
 
     def get_cookie_header(self) -> str:
         """
-        Format session cookie for WebSocket headers.
+        Format session cookie for WebSocket headers with correct name.
 
         Returns:
-            Cookie header string (e.g., "session_id=abc123")
+            Cookie header string (e.g., "ASP_NET_SessionId=abc123")
 
         Raises:
             ValueError: If no session cookie available
         """
-        if not self.session_cookie:
+        if not self.session_cookie or not self.session_cookie_name:
             raise ValueError("No session cookie available. Call login() first.")
 
-        return f"session_id={self.session_cookie}"
+        return f"{self.session_cookie_name}={self.session_cookie}"
+
+    def get_all_cookies_header(self) -> str:
+        """
+        Format ALL cookies for WebSocket headers (for cross-domain compatibility).
+
+        Returns:
+            Cookie header string with all cookies
+
+        Raises:
+            ValueError: If no cookies available
+        """
+        if not self.all_cookies:
+            raise ValueError("No cookies available. Call login() first.")
+
+        # Format all cookies as "name1=value1; name2=value2; ..."
+        cookie_pairs = [f"{c['name']}={c['value']}" for c in self.all_cookies]
+        return "; ".join(cookie_pairs)
 
 
 class AuthenticationError(Exception):
