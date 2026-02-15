@@ -17,10 +17,9 @@ class BookmakerAuth:
 
     Uses Playwright to:
     1. Open browser
-    2. Navigate to login page
-    3. Fill credentials
-    4. Submit form
-    5. Extract session cookie
+    2. Fill login credentials
+    3. Submit form
+    4. Extract session cookie
 
     Attributes:
         username: Bookmaker.eu username
