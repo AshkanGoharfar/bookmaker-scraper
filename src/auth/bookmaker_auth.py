@@ -3,6 +3,7 @@ Bookmaker.eu authentication module.
 Handles automated login and session cookie extraction using Playwright.
 """
 
+import asyncio
 from typing import Optional
 from playwright.async_api import async_playwright, Browser, Page
 from src.utils.logger import setup_logger
@@ -40,47 +41,62 @@ class BookmakerAuth:
         self.session_cookie: Optional[str] = None
         logger.debug(f"BookmakerAuth initialized for user: {username}")
 
-    async def login(self) -> str:
+    async def login(self, max_retries: int = 3) -> str:
         """
-        Perform automated login and extract session cookie.
+        Perform automated login with retry logic.
+
+        Args:
+            max_retries: Maximum number of retry attempts (default: 3)
+
+        Returns:
+            Session cookie value
+
+        Raises:
+            AuthenticationError: If login fails after all retries
+        """
+        last_error = None
+
+        for attempt in range(1, max_retries + 1):
+            try:
+                logger.info(f"Login attempt {attempt}/{max_retries}...")
+                return await self._attempt_login()
+            except (ConnectionError, TimeoutError) as e:
+                last_error = e
+                logger.warning(f"Attempt {attempt} failed: {e}")
+                if attempt < max_retries:
+                    wait_time = 2 ** attempt  # Exponential backoff
+                    logger.info(f"Retrying in {wait_time} seconds...")
+                    await asyncio.sleep(wait_time)
+            except AuthenticationError:
+                # Don't retry on auth errors (wrong credentials)
+                raise
+
+        raise AuthenticationError(f"Login failed after {max_retries} attempts") from last_error
+
+    async def _attempt_login(self) -> str:
+        """
+        Single login attempt (extracted for retry logic).
 
         Returns:
             Session cookie value
 
         Raises:
             AuthenticationError: If login fails
+            ConnectionError: If network fails
             TimeoutError: If page load times out
         """
-        logger.info(f"Authenticating as {self.username}...")
+        async with async_playwright() as p:
+            browser = await p.chromium.launch(headless=True)
+            logger.debug("Browser launched")
 
-        try:
-            async with async_playwright() as p:
-                # Launch browser (headless mode)
-                browser = await p.chromium.launch(headless=True)
-                logger.debug("Browser launched")
-
-                # Create new page
+            try:
                 page = await browser.new_page()
-                logger.debug("New page created")
-
-                # Navigate to login page
                 await page.goto("https://www.bookmaker.eu/login", timeout=30000)
-                logger.debug("Navigated to login page")
-
-                # Fill credentials
                 await page.fill("input[name='username']", self.username)
                 await page.fill("input[name='password']", self.password)
-                logger.debug("Credentials filled")
-
-                # Submit form
                 await page.click("button[type='submit']")
-                logger.debug("Login form submitted")
-
-                # Wait for successful login (redirects to home or dashboard)
                 await page.wait_for_url("**/home", timeout=10000)
-                logger.debug("Login successful, redirected to home")
 
-                # Extract session cookie
                 cookies = await page.context.cookies()
                 session_cookie = next(
                     (c['value'] for c in cookies if c['name'] == 'session_id'),
@@ -88,20 +104,14 @@ class BookmakerAuth:
                 )
 
                 if not session_cookie:
-                    raise AuthenticationError("Session cookie not found after login")
+                    raise AuthenticationError("Session cookie not found")
 
                 self.session_cookie = session_cookie
                 logger.info("Authentication successful")
-
-                await browser.close()
                 return session_cookie
 
-        except TimeoutError as e:
-            logger.error(f"Login timeout: {e}")
-            raise AuthenticationError(f"Login failed: Timeout") from e
-        except Exception as e:
-            logger.error(f"Login failed: {e}")
-            raise AuthenticationError(f"Login failed: {str(e)}") from e
+            finally:
+                await browser.close()
 
     def get_cookie_header(self) -> str:
         """

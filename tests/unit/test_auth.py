@@ -54,6 +54,40 @@ class TestBookmakerAuth:
             assert cookie == "test_cookie_123"
             assert auth.session_cookie == "test_cookie_123"
 
+    @pytest.mark.asyncio
+    async def test_login_retries_on_transient_failure(self):
+        """Test that login retries on ConnectionError"""
+        with patch('src.auth.bookmaker_auth.async_playwright') as mock_pw:
+            # Setup: Fail twice, succeed third time
+            mock_page = AsyncMock()
+            mock_page.goto = AsyncMock(side_effect=[
+                ConnectionError("Network error"),  # 1st attempt
+                ConnectionError("Network error"),  # 2nd attempt
+                None  # 3rd attempt succeeds
+            ])
+            mock_page.fill = AsyncMock()
+            mock_page.click = AsyncMock()
+            mock_page.wait_for_url = AsyncMock()
+            mock_page.context.cookies = AsyncMock(return_value=[
+                {'name': 'session_id', 'value': 'success_cookie'}
+            ])
+
+            mock_browser = AsyncMock()
+            mock_browser.new_page = AsyncMock(return_value=mock_page)
+            mock_browser.close = AsyncMock()
+
+            mock_playwright = AsyncMock()
+            mock_playwright.chromium.launch = AsyncMock(return_value=mock_browser)
+            mock_pw.return_value.__aenter__.return_value = mock_playwright
+
+            # Execute
+            auth = BookmakerAuth("user", "pass")
+            cookie = await auth.login()
+
+            # Assert
+            assert mock_page.goto.call_count == 3  # Retried 3 times
+            assert cookie == "success_cookie"
+
     def test_get_cookie_header_formats_correctly(self):
         """Test that cookie is formatted for headers"""
         auth = BookmakerAuth("user", "pass")
