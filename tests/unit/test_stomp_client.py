@@ -163,22 +163,51 @@ class TestStompClientSubscription:
     async def test_subscribe_raises_if_not_connected(self):
         """Test that subscribe() raises RuntimeError if not connected"""
         client = StompClient()
-
-        # Will fail until M1.4.7 is implemented
-        with pytest.raises(NotImplementedError):
+        # Not connected, should raise
+        with pytest.raises(RuntimeError) as exc_info:
             await client.subscribe()
+        assert "not connected" in str(exc_info.value).lower()
 
     @pytest.mark.asyncio
     async def test_subscribe_sends_subscribe_frame_to_exchange(self):
         """Test that subscribe() sends SUBSCRIBE to exchange with topics"""
-        # Will be implemented in M1.4.7
-        pass
+        client = StompClient()
+        client.ws = AsyncMock()
+        client.connected = True
+
+        await client.subscribe(
+            exchange="BetSlipRTv4Topics",
+            topics=["GAME", "TNT", "l"]
+        )
+
+        # Verify SUBSCRIBE frame was sent
+        client.ws.send.assert_called_once()
+        sent_frame = client.ws.send.call_args[0][0]
+
+        assert "SUBSCRIBE" in sent_frame
+        assert "destination:/exchange/BetSlipRTv4Topics/GAME.TNT.l" in sent_frame
+        assert "id:sub-0" in sent_frame
+        assert "ack:auto" in sent_frame
+        assert sent_frame.endswith("\x00")
 
     @pytest.mark.asyncio
     async def test_subscribe_uses_default_topics(self):
         """Test that subscribe() uses GAME,TNT,l as default topics"""
-        # Will be implemented in M1.4.7
-        pass
+        client = StompClient()
+        client.ws = AsyncMock()
+        client.connected = True
+
+        # Call without specifying topics (should use defaults)
+        await client.subscribe()
+
+        # Verify default topics used
+        client.ws.send.assert_called_once()
+        sent_frame = client.ws.send.call_args[0][0]
+
+        # Should contain default topics: GAME, TNT, l
+        assert "GAME" in sent_frame
+        assert "TNT" in sent_frame
+        assert ".l" in sent_frame or "l\n" in sent_frame
 
 
 class TestStompClientListening:

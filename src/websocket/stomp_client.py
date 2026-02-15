@@ -143,7 +143,24 @@ class StompClient:
             RuntimeError: If not connected
             StompError: If STOMP ERROR frame received
         """
-        raise NotImplementedError("To be implemented in M1.4.7")
+        if not self.connected or not self.ws:
+            raise RuntimeError("Not connected. Call connect() first.")
+
+        # Use default topics if not specified
+        if topics is None:
+            topics = ["GAME", "TNT", "l"]
+
+        logger.info(f"Subscribing to exchange {exchange} with topics: {topics}")
+
+        # Send STOMP SUBSCRIBE frame
+        subscribe_frame = encode_subscribe_frame(
+            exchange=exchange,
+            topics=topics,
+            sub_id=sub_id
+        )
+        await self.ws.send(subscribe_frame)
+
+        logger.info(f"Subscribed to {exchange} (topics: {', '.join(topics)})")
 
     async def listen(self) -> AsyncIterator[Dict[str, Any]]:
         """
