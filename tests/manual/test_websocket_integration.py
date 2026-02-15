@@ -55,7 +55,7 @@ logger = setup_logger(__name__)
 # Configuration
 WEBSOCKET_URL = "wss://be.bookmaker.eu/gateway/handlers/RealTimeHandler.ashx?f=ws"
 EXCHANGE = "BetSlipRTv4Topics"
-TOPICS = ["GAME", "TNT", "l"]  # Game odds, Tournament odds, Live updates
+TOPICS = ["GAME", "TNT", "HB", "mrc", "VIDEO"]  # All topics from config.dev.json
 LISTEN_DURATION = 300  # 5 minutes in seconds
 MAX_MESSAGES_TO_LOG = 10  # Only log first 10 messages in detail
 
@@ -152,7 +152,8 @@ async def run_integration_test(
         await client.subscribe(
             exchange=EXCHANGE,
             topics=TOPICS,
-            sub_id="sub-0"
+            sub_id="sub-0",
+            use_wildcard=True  # Try wildcard to get ALL messages
         )
 
         logger.info(f"✅ SUBSCRIBED successfully!")
@@ -317,13 +318,16 @@ Examples:
     args = parser.parse_args()
 
     # Manual cookie mode (bypasses authentication)
-    if args.manual_cookie:
+    # Priority: CLI arg > .env variable
+    manual_cookie = args.manual_cookie or os.getenv("MANUAL_COOKIE")
+
+    if manual_cookie:
         logger.info("Using manual cookie mode...")
         asyncio.run(run_integration_test(
             username="",
             password="",
             duration=args.duration,
-            manual_cookie=args.manual_cookie
+            manual_cookie=manual_cookie
         ))
         sys.exit(0)
 

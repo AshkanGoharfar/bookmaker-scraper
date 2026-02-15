@@ -134,7 +134,8 @@ class StompClient:
         self,
         exchange: str = "BetSlipRTv4Topics",
         topics: Optional[List[str]] = None,
-        sub_id: str = "sub-0"
+        sub_id: str = "sub-0",
+        use_wildcard: bool = False
     ) -> None:
         """
         Subscribe to RabbitMQ exchange with routing keys.
@@ -143,6 +144,7 @@ class StompClient:
             exchange: Exchange name (default: BetSlipRTv4Topics)
             topics: Routing keys (default: ["GAME", "TNT", "l"])
             sub_id: Subscription ID (default: sub-0)
+            use_wildcard: If True, use '#' wildcard to receive ALL messages (default: False)
 
         Raises:
             RuntimeError: If not connected
@@ -155,17 +157,24 @@ class StompClient:
         if topics is None:
             topics = ["GAME", "TNT", "l"]
 
-        logger.info(f"Subscribing to exchange {exchange} with topics: {topics}")
+        if use_wildcard:
+            logger.info(f"Subscribing to exchange {exchange} with wildcard (#) - ALL messages")
+        else:
+            logger.info(f"Subscribing to exchange {exchange} with topics: {topics}")
 
         # Send STOMP SUBSCRIBE frame
         subscribe_frame = encode_subscribe_frame(
             exchange=exchange,
             topics=topics,
-            sub_id=sub_id
+            sub_id=sub_id,
+            use_wildcard=use_wildcard
         )
         await self.ws.send(subscribe_frame)
 
-        logger.info(f"Subscribed to {exchange} (topics: {', '.join(topics)})")
+        if use_wildcard:
+            logger.info(f"Subscribed to {exchange} (wildcard: # for ALL messages)")
+        else:
+            logger.info(f"Subscribed to {exchange} (topics: {', '.join(topics)})")
 
     async def listen(self) -> AsyncIterator[Dict[str, Any]]:
         """
@@ -209,14 +218,20 @@ class StompClient:
                 if frame["command"] == "MESSAGE":
                     body = frame["body"]
                     if body:
-                        try:
-                            # Parse JSON body and yield
-                            message_data = json.loads(body)
-                            logger.debug(f"Received message: {message_data}")
-                            yield message_data
-                        except json.JSONDecodeError as e:
-                            logger.warning(f"Failed to parse JSON message: {e}")
-                            continue
+                        # TODO: Parse JSON after we analyze the format
+                        # For now, just yield the raw body so we can see the structure
+                        logger.debug(f"Received raw message (length: {len(body)} chars)")
+                        yield {"raw_body": body}  # Yield raw body for analysis
+
+                        # COMMENTED OUT - Will fix after seeing actual format
+                        # try:
+                        #     # Parse JSON body and yield
+                        #     message_data = json.loads(body)
+                        #     logger.debug(f"Received message: {message_data}")
+                        #     yield message_data
+                        # except json.JSONDecodeError as e:
+                        #     logger.warning(f"Failed to parse JSON message: {e}")
+                        #     continue
                     else:
                         logger.debug("Received MESSAGE with empty body")
                         continue

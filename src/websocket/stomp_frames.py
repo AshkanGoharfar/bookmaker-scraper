@@ -41,7 +41,8 @@ def encode_connect_frame(
 def encode_subscribe_frame(
     exchange: str,
     topics: List[str],
-    sub_id: str = "sub-0"
+    sub_id: str = "sub-0",
+    use_wildcard: bool = False
 ) -> str:
     """
     Encode STOMP SUBSCRIBE frame for RabbitMQ exchange.
@@ -50,11 +51,17 @@ def encode_subscribe_frame(
         exchange: Exchange name (e.g., "BetSlipRTv4Topics")
         topics: Routing keys (e.g., ["GAME", "TNT", "l"])
         sub_id: Subscription ID
+        use_wildcard: If True, use '#' wildcard to receive ALL messages
 
     Returns:
         STOMP SUBSCRIBE frame as string with NULL terminator
     """
-    routing_keys = ".".join(topics)
+    # Use wildcard to get ALL messages, or specific routing keys
+    if use_wildcard:
+        routing_keys = "#"  # RabbitMQ wildcard: matches any routing key
+    else:
+        routing_keys = ".".join(topics)
+
     return (
         "SUBSCRIBE\n"
         f"id:{sub_id}\n"
