@@ -176,10 +176,53 @@ class StompClient:
             StompError: If STOMP ERROR frame received
             websockets.ConnectionClosed: If WebSocket disconnects
         """
-        raise NotImplementedError("To be implemented in M1.4.8")
-        # Make this a generator to satisfy type hints
-        if False:  # pragma: no cover
-            yield {}
+        if not self.connected or not self.ws:
+            raise RuntimeError("Not connected. Call connect() first.")
+
+        logger.debug("Starting to listen for messages...")
+
+        while True:
+            try:
+                # Receive raw frame from WebSocket
+                raw_frame = await self.ws.recv()
+
+                # Parse STOMP frame
+                frame = parse_stomp_frame(raw_frame)
+
+                # Skip heartbeats
+                if frame["is_heartbeat"]:
+                    logger.debug("Received heartbeat")
+                    continue
+
+                # Handle ERROR frames
+                if frame["command"] == "ERROR":
+                    error_msg = frame["headers"].get("message", "Unknown error")
+                    logger.error(f"STOMP ERROR received: {error_msg}")
+                    raise StompError(f"STOMP ERROR: {error_msg}")
+
+                # Handle MESSAGE frames
+                if frame["command"] == "MESSAGE":
+                    body = frame["body"]
+                    if body:
+                        try:
+                            # Parse JSON body and yield
+                            message_data = json.loads(body)
+                            logger.debug(f"Received message: {message_data}")
+                            yield message_data
+                        except json.JSONDecodeError as e:
+                            logger.warning(f"Failed to parse JSON message: {e}")
+                            continue
+                    else:
+                        logger.debug("Received MESSAGE with empty body")
+                        continue
+
+            except Exception as e:
+                # Re-raise if it's our StompError
+                if isinstance(e, StompError):
+                    raise
+                # Otherwise log and re-raise (likely ConnectionClosed)
+                logger.error(f"Error in listen loop: {e}")
+                raise
 
     async def disconnect(self) -> None:
         """

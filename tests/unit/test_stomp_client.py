@@ -217,29 +217,148 @@ class TestStompClientListening:
     async def test_listen_raises_if_not_connected(self):
         """Test that listen() raises RuntimeError if not connected"""
         client = StompClient()
-
-        # Will fail until M1.4.8 is implemented
-        with pytest.raises(NotImplementedError):
+        # Not connected, should raise
+        with pytest.raises(RuntimeError) as exc_info:
             async for _ in client.listen():
                 break
+        assert "not connected" in str(exc_info.value).lower()
 
     @pytest.mark.asyncio
     async def test_listen_yields_parsed_json_messages(self):
         """Test that listen() yields parsed JSON from MESSAGE frames"""
-        # Will be implemented in M1.4.8
-        pass
+        client = StompClient()
+        client.ws = AsyncMock()
+        client.connected = True
+
+        # Mock WebSocket to return 3 MESSAGE frames then close
+        messages = [
+            # MESSAGE 1: Game odds update
+            (
+                "MESSAGE\n"
+                "destination:/exchange/BetSlipRTv4Topics\n"
+                "message-id:123\n"
+                "subscription:sub-0\n"
+                "content-type:application/json\n"
+                "\n"
+                '{"type":"GAME","gameId":12345,"odds":2.5}\x00'
+            ),
+            # MESSAGE 2: Live update
+            (
+                "MESSAGE\n"
+                "destination:/exchange/BetSlipRTv4Topics\n"
+                "message-id:124\n"
+                "subscription:sub-0\n"
+                "\n"
+                '{"type":"l","eventId":67890,"score":"2-1"}\x00'
+            ),
+        ]
+
+        call_count = 0
+        async def mock_recv():
+            nonlocal call_count
+            if call_count < len(messages):
+                msg = messages[call_count]
+                call_count += 1
+                return msg
+            else:
+                # Simulate WebSocket close
+                from websockets.exceptions import ConnectionClosed
+                raise ConnectionClosed(None, None)
+
+        client.ws.recv = mock_recv
+
+        # Collect yielded messages
+        received = []
+        try:
+            async for message in client.listen():
+                received.append(message)
+        except Exception:
+            pass  # Expected ConnectionClosed
+
+        # Verify we got both JSON messages parsed
+        assert len(received) == 2
+        assert received[0]["type"] == "GAME"
+        assert received[0]["gameId"] == 12345
+        assert received[0]["odds"] == 2.5
+        assert received[1]["type"] == "l"
+        assert received[1]["eventId"] == 67890
 
     @pytest.mark.asyncio
     async def test_listen_filters_heartbeats(self):
         """Test that listen() filters out heartbeat frames"""
-        # Will be implemented in M1.4.8
-        pass
+        client = StompClient()
+        client.ws = AsyncMock()
+        client.connected = True
+
+        # Mix heartbeats with real messages
+        frames = [
+            "\x00",  # Heartbeat
+            (
+                "MESSAGE\n"
+                "message-id:1\n"
+                "\n"
+                '{"type":"GAME","id":1}\x00'
+            ),
+            "\x00",  # Heartbeat
+            "\x00",  # Heartbeat
+            (
+                "MESSAGE\n"
+                "message-id:2\n"
+                "\n"
+                '{"type":"TNT","id":2}\x00'
+            ),
+        ]
+
+        call_count = 0
+        async def mock_recv():
+            nonlocal call_count
+            if call_count < len(frames):
+                frame = frames[call_count]
+                call_count += 1
+                return frame
+            else:
+                from websockets.exceptions import ConnectionClosed
+                raise ConnectionClosed(None, None)
+
+        client.ws.recv = mock_recv
+
+        # Collect yielded messages
+        received = []
+        try:
+            async for message in client.listen():
+                received.append(message)
+        except Exception:
+            pass
+
+        # Should only get 2 messages, heartbeats filtered out
+        assert len(received) == 2
+        assert received[0]["id"] == 1
+        assert received[1]["id"] == 2
 
     @pytest.mark.asyncio
     async def test_listen_raises_on_stomp_error(self):
         """Test that listen() raises StompError on ERROR frame"""
-        # Will be implemented in M1.4.8
-        pass
+        client = StompClient()
+        client.ws = AsyncMock()
+        client.connected = True
+
+        # Mock WebSocket to return ERROR frame
+        async def mock_recv():
+            return (
+                "ERROR\n"
+                "message:Subscription error\n"
+                "\n"
+                "Invalid subscription\x00"
+            )
+
+        client.ws.recv = mock_recv
+
+        # Should raise StompError
+        with pytest.raises(StompError) as exc_info:
+            async for _ in client.listen():
+                pass
+
+        assert "Subscription error" in str(exc_info.value) or "ERROR" in str(exc_info.value)
 
 
 class TestStompClientHeartbeat:
