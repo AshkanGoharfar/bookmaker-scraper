@@ -33,34 +33,121 @@ class TestStompClientConnection:
         """Test that connect() opens WebSocket with proper headers"""
         client = StompClient()
 
-        with patch('websockets.connect', new_callable=AsyncMock) as mock_connect:
+        with patch('src.websocket.stomp_client.websockets.connect', new_callable=AsyncMock) as mock_connect:
+            # Mock WebSocket connection
             mock_ws = AsyncMock()
-            mock_connect.return_value.__aenter__.return_value = mock_ws
-
-            # Will fail until M1.4.6 is implemented
-            with pytest.raises(NotImplementedError):
-                await client.connect(
-                    url="wss://test.com/ws",
-                    cookie="ASP_NET_SessionId=test123"
+            # Set recv to return the CONNECTED frame
+            async def mock_recv():
+                return (
+                    "CONNECTED\n"
+                    "session:test-session-123\n"
+                    "heart-beat:20000,20000\n"
+                    "server:RabbitMQ/3.9.10\n"
+                    "version:1.2\n"
+                    "\n"
+                    "\x00"
                 )
+            mock_ws.recv = mock_recv
+            mock_connect.return_value = mock_ws
+
+            await client.connect(
+                url="wss://test.com/ws",
+                cookie="ASP_NET_SessionId=test123"
+            )
+
+            # Verify WebSocket was opened with correct URL and headers
+            mock_connect.assert_called_once()
+            call_args = mock_connect.call_args
+            assert call_args[0][0] == "wss://test.com/ws"
+            assert "extra_headers" in call_args[1]
+            assert "Cookie" in call_args[1]["extra_headers"]
+            assert call_args[1]["extra_headers"]["Cookie"] == "ASP_NET_SessionId=test123"
 
     @pytest.mark.asyncio
     async def test_connect_sends_stomp_connect_frame(self):
         """Test that connect() sends CONNECT frame with virtual host"""
-        # Will be implemented in M1.4.6
-        pass
+        client = StompClient()
+
+        with patch('src.websocket.stomp_client.websockets.connect', new_callable=AsyncMock) as mock_connect:
+            mock_ws = AsyncMock()
+            async def mock_recv():
+                return (
+                    "CONNECTED\n"
+                    "session:abc\n"
+                    "heart-beat:20000,20000\n"
+                    "\n"
+                    "\x00"
+                )
+            mock_ws.recv = mock_recv
+            mock_connect.return_value = mock_ws
+
+            await client.connect(
+                url="wss://test.com/ws",
+                cookie="test_cookie",
+                host="WebRT",
+                login="rtweb",
+                passcode="rtweb"
+            )
+
+            # Verify CONNECT frame was sent
+            mock_ws.send.assert_called_once()
+            sent_frame = mock_ws.send.call_args[0][0]
+
+            assert "CONNECT" in sent_frame
+            assert "host:WebRT" in sent_frame
+            assert "login:rtweb" in sent_frame
+            assert "passcode:rtweb" in sent_frame
+            assert "heart-beat:20000,20000" in sent_frame
+            assert sent_frame.endswith("\x00")
 
     @pytest.mark.asyncio
     async def test_connect_receives_and_parses_connected_frame(self):
         """Test that connect() receives CONNECTED and extracts session"""
-        # Will be implemented in M1.4.6
-        pass
+        client = StompClient()
+
+        with patch('src.websocket.stomp_client.websockets.connect', new_callable=AsyncMock) as mock_connect:
+            mock_ws = AsyncMock()
+            async def mock_recv():
+                return (
+                    "CONNECTED\n"
+                    "session:my-session-456\n"
+                    "heart-beat:20000,20000\n"
+                    "server:RabbitMQ/3.9.10\n"
+                    "\n"
+                    "\x00"
+                )
+            mock_ws.recv = mock_recv
+            mock_connect.return_value = mock_ws
+
+            await client.connect(url="wss://test.com", cookie="test")
+
+            # Verify connection state
+            assert client.connected is True
+            assert client.session_id == "my-session-456"
+            assert client.ws is mock_ws
 
     @pytest.mark.asyncio
     async def test_connect_raises_error_on_stomp_error_frame(self):
         """Test that connect() raises StompError if ERROR received"""
-        # Will be implemented in M1.4.6
-        pass
+        client = StompClient()
+
+        with patch('src.websocket.stomp_client.websockets.connect', new_callable=AsyncMock) as mock_connect:
+            mock_ws = AsyncMock()
+            async def mock_recv():
+                return (
+                    "ERROR\n"
+                    "message:Authentication failed\n"
+                    "\n"
+                    "Invalid credentials\x00"
+                )
+            mock_ws.recv = mock_recv
+            mock_ws.close = AsyncMock()
+            mock_connect.return_value = mock_ws
+
+            with pytest.raises(ConnectionError) as exc_info:
+                await client.connect(url="wss://test.com", cookie="test")
+
+            assert "ERROR" in str(exc_info.value) or "Authentication failed" in str(exc_info.value)
 
     @pytest.mark.asyncio
     async def test_connect_starts_heartbeat_task(self):

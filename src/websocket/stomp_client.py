@@ -71,7 +71,59 @@ class StompClient:
             ConnectionError: If connection or STOMP handshake fails
             StompError: If STOMP ERROR frame received
         """
-        raise NotImplementedError("To be implemented in M1.4.6")
+        logger.info(f"Connecting to {url}...")
+
+        # Open WebSocket connection with cookie in headers
+        headers = {
+            "Cookie": cookie,
+            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                         "AppleWebKit/537.36 (KHTML, like Gecko) "
+                         "Chrome/120.0.0.0 Safari/537.36"
+        }
+
+        try:
+            self.ws = await websockets.connect(url, extra_headers=headers)
+            logger.debug("WebSocket connection established")
+        except Exception as e:
+            raise ConnectionError(f"Failed to connect to WebSocket: {e}") from e
+
+        # Send STOMP CONNECT frame
+        connect_frame = encode_connect_frame(
+            host=host,
+            login=login,
+            passcode=passcode,
+            heartbeat=heartbeat
+        )
+        await self.ws.send(connect_frame)
+        logger.debug("CONNECT frame sent")
+
+        # Wait for CONNECTED response
+        try:
+            response = await self.ws.recv()
+            frame = parse_stomp_frame(response)
+
+            if frame["command"] == "ERROR":
+                error_msg = frame["headers"].get("message", "Unknown error")
+                raise ConnectionError(f"STOMP ERROR: {error_msg}")
+
+            if frame["command"] != "CONNECTED":
+                raise ConnectionError(
+                    f"Expected CONNECTED frame, got {frame['command']}"
+                )
+
+            # Extract session ID
+            self.session_id = frame["headers"].get("session")
+            self.connected = True
+
+            logger.info(f"STOMP connected successfully. Session: {self.session_id}")
+
+        except Exception as e:
+            # Close WebSocket on error
+            if self.ws:
+                await self.ws.close()
+            self.ws = None
+            self.connected = False
+            raise
 
     async def subscribe(
         self,
