@@ -310,9 +310,62 @@ class TestMarketFetcher:
         # Verify status updated
         assert fetcher.markets["700"]["lvg"] == 2
 
-    def test_get_market_state_not_implemented(self):
-        """Test that get_market_state raises NotImplementedError (temporary)"""
+    def test_get_market_state_returns_market_data(self):
+        """Test that get_market_state returns cached market"""
         fetcher = MarketFetcher("cookie")
+        fetcher.markets = {
+            "123": {
+                "gid": 123,
+                "htm": "Team A",
+                "vtm": "Team B",
+                "mkt": {"m": [{"h": -180, "v": 160}]}
+            }
+        }
 
-        with pytest.raises(NotImplementedError, match="get_market_state not yet implemented"):
-            fetcher.get_market_state("game1")
+        result = fetcher.get_market_state("123")
+
+        assert result is not None
+        assert result["gid"] == 123
+        assert result["htm"] == "Team A"
+        assert result["vtm"] == "Team B"
+
+    def test_get_market_state_returns_none_if_not_found(self):
+        """Test that get_market_state returns None for unknown game"""
+        fetcher = MarketFetcher("cookie")
+        fetcher.markets = {}
+
+        result = fetcher.get_market_state("999")
+
+        assert result is None
+
+    def test_get_market_state_handles_string_and_int_game_ids(self):
+        """Test that get_market_state works with both string and int game IDs"""
+        fetcher = MarketFetcher("cookie")
+        fetcher.markets = {
+            "456": {"gid": 456, "htm": "Team X"}
+        }
+
+        # String ID
+        result1 = fetcher.get_market_state("456")
+        assert result1 is not None
+        assert result1["gid"] == 456
+
+        # Integer ID (should convert to string internally)
+        result2 = fetcher.get_market_state(456)
+        assert result2 is not None
+        assert result2["gid"] == 456
+
+    def test_get_market_state_returns_copy_not_reference(self):
+        """Test that get_market_state returns a copy, not direct reference"""
+        fetcher = MarketFetcher("cookie")
+        fetcher.markets = {
+            "789": {"gid": 789, "odds": 1.5}
+        }
+
+        result = fetcher.get_market_state("789")
+
+        # Modify result
+        result["odds"] = 2.0
+
+        # Original should be unchanged
+        assert fetcher.markets["789"]["odds"] == 1.5

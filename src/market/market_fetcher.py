@@ -191,32 +191,42 @@ class MarketFetcher:
             self.markets[gid_str] = delta_message.copy()
             logger.debug(f"Created new market entry from delta for game {gid_str}")
 
-    def get_market_state(self, game_id: str) -> Optional[Dict]:
+    def get_market_state(self, game_id: Any) -> Optional[Dict]:
         """
         Get current market state for a game
 
         Args:
-            game_id: Game ID to query
+            game_id: Game ID to query (string or int)
 
         Returns:
-            Market data dict or None if not found
+            Copy of market data dict or None if not found
 
         Example return:
             {
                 "gid": 47414947,
                 "htm": "Team A",
                 "vtm": "Team B",
-                "derivatives": {
+                "Derivatives": {
                     "line": [{
                         "hoddst": "-366",
                         "hsprdt": "-5.5",
                         ...
                     }]
+                },
+                "mkt": {
+                    "s": [{"h": -360, "hp": 1.5, "v": 250, "vp": -1.5}]
                 }
             }
         """
-        # TODO: Implement in M3.1.5
-        raise NotImplementedError("get_market_state not yet implemented")
+        # Convert to string for lookup (markets dict uses string keys)
+        game_id_str = str(game_id)
+
+        market = self.markets.get(game_id_str)
+
+        # Return a copy to prevent external modifications
+        if market:
+            return market.copy()
+        return None
 
     def get_all_markets(self) -> Dict[str, Dict]:
         """
