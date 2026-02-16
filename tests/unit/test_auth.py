@@ -92,10 +92,11 @@ class TestBookmakerAuth:
         """Test that cookie is formatted for headers"""
         auth = BookmakerAuth("user", "pass")
         auth.session_cookie = "abc123xyz"
+        auth.session_cookie_name = "ASP.NET_SessionId"  # Set cookie name
 
         result = auth.get_cookie_header()
 
-        assert result == "session_id=abc123xyz"
+        assert result == "ASP.NET_SessionId=abc123xyz"
 
     def test_get_cookie_header_raises_when_no_cookie(self):
         """Test that ValueError is raised if no cookie"""
