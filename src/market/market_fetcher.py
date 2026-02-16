@@ -69,8 +69,74 @@ class MarketFetcher:
         Raises:
             aiohttp.ClientError: If API request fails
         """
-        # TODO: Implement in next subtask (M3.1.3)
-        raise NotImplementedError("fetch_initial_markets not yet implemented")
+        if game_ids is None:
+            game_ids = list(self.markets.keys())
+
+        if not game_ids:
+            logger.warning("No game IDs provided to fetch_initial_markets")
+            return {}
+
+        logger.info(f"Fetching initial markets for {len(game_ids)} games...")
+
+        # Fetch markets for each game ID
+        async with aiohttp.ClientSession() as session:
+            for game_id in game_ids:
+                try:
+                    await self._fetch_single_game_market(session, game_id)
+                except Exception as e:
+                    logger.error(f"Failed to fetch market for game {game_id}: {e}")
+                    # Continue with other games even if one fails
+                    continue
+
+        logger.info(f"✅ Fetched {len(self.markets)} markets successfully")
+        return self.markets.copy()
+
+    async def _fetch_single_game_market(self, session: aiohttp.ClientSession, game_id: str) -> None:
+        """
+        Fetch market data for a single game using GetGameInfo API
+
+        Args:
+            session: aiohttp session to reuse
+            game_id: Game ID to fetch
+
+        Raises:
+            aiohttp.ClientError: If API request fails
+        """
+        url = f"{self.base_url}/GetGameInfo"
+        payload = {
+            "Req": {
+                "InParams": {
+                    "GameId": game_id
+                }
+            }
+        }
+
+        headers = {
+            "Cookie": f"ASP.NET_SessionId={self.cookie}",
+            "Content-Type": "application/json"
+        }
+
+        async with session.post(url, json=payload, headers=headers) as response:
+            if response.status != 200:
+                error_text = await response.text()
+                raise aiohttp.ClientError(
+                    f"GetGameInfo API returned {response.status} for game {game_id}: {error_text}"
+                )
+
+            data = await response.json()
+            logger.debug(f"GetGameInfo response for {game_id}: {str(data)[:200]}...")
+
+            # Parse and cache the game data
+            games = data.get("game", [])
+            if games:
+                game_data = games[0]  # GetGameInfo returns array with single game
+                game_id_str = str(game_data.get("idgm", game_id))
+
+                # Cache the full game data (includes Derivatives with market data)
+                self.markets[game_id_str] = game_data
+                logger.debug(f"Cached market for game {game_id_str}: {game_data.get('htm')} vs {game_data.get('vtm')}")
+            else:
+                logger.warning(f"No game data returned for game {game_id}")
 
     def apply_delta(self, delta_message: Dict) -> None:
         """
