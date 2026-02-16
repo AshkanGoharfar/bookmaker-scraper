@@ -186,12 +186,129 @@ class TestMarketFetcher:
             assert markets == {}
             assert "999" not in fetcher.markets
 
-    def test_apply_delta_not_implemented(self):
-        """Test that apply_delta raises NotImplementedError (temporary)"""
+    def test_apply_delta_updates_existing_market(self):
+        """Test that apply_delta updates cached market with new odds"""
         fetcher = MarketFetcher("cookie")
 
-        with pytest.raises(NotImplementedError, match="apply_delta not yet implemented"):
-            fetcher.apply_delta({"gid": 123})
+        # Setup: Pre-populate cache with initial state (from GetGameInfo)
+        fetcher.markets = {
+            "47414947": {
+                "idgm": "47414947",
+                "htm": "Team A",
+                "vtm": "Team B",
+                "Derivatives": {
+                    "line": [{
+                        "s_ml": 1,
+                        "hoddst": "-180",
+                        "voddst": "160"
+                    }]
+                },
+                "mkt": {
+                    "s": [{"h": -355, "hp": 1.5, "v": 245, "vp": -1.5}]
+                }
+            }
+        }
+
+        # Apply delta with updated odds
+        delta = {
+            "gid": 47414947,
+            "mkt": {
+                "s": [{"h": -360, "hp": 1.5, "v": 250, "vp": -1.5}]
+            }
+        }
+
+        fetcher.apply_delta(delta)
+
+        # Verify market was updated
+        updated_market = fetcher.markets["47414947"]
+        assert updated_market["mkt"]["s"][0]["h"] == -360  # Updated from -355
+        assert updated_market["mkt"]["s"][0]["v"] == 250   # Updated from 245
+        # Original data should be preserved
+        assert updated_market["htm"] == "Team A"
+
+    def test_apply_delta_creates_new_market_if_not_exists(self):
+        """Test that apply_delta creates new market if game not in cache"""
+        fetcher = MarketFetcher("cookie")
+        fetcher.markets = {}  # Empty cache
+
+        delta = {
+            "gid": 999,
+            "mkt": {"m": [{"h": -180, "v": 160}]}
+        }
+
+        fetcher.apply_delta(delta)
+
+        # Verify new market was created
+        assert "999" in fetcher.markets
+        assert fetcher.markets["999"]["gid"] == 999
+        assert fetcher.markets["999"]["mkt"]["m"][0]["h"] == -180
+
+    def test_apply_delta_handles_missing_gid_gracefully(self):
+        """Test that apply_delta handles delta without gid gracefully"""
+        fetcher = MarketFetcher("cookie")
+        fetcher.markets = {"100": {"gid": 100}}
+
+        delta = {"mkt": {"s": [{"h": -100}]}}  # No gid
+
+        # Should not crash
+        fetcher.apply_delta(delta)
+
+        # Markets should be unchanged
+        assert len(fetcher.markets) == 1
+        assert "100" in fetcher.markets
+
+    def test_apply_delta_merges_multiple_market_types(self):
+        """Test that apply_delta can update multiple market types (spread, moneyline, totals)"""
+        fetcher = MarketFetcher("cookie")
+        fetcher.markets = {
+            "500": {
+                "gid": 500,
+                "mkt": {
+                    "s": [{"h": -110, "hp": 3.0}],
+                    "m": [{"h": -150, "v": 130}]
+                }
+            }
+        }
+
+        # Delta with spread and totals
+        delta = {
+            "gid": 500,
+            "mkt": {
+                "s": [{"h": -115, "hp": 3.5}],  # Updated spread
+                "t": [{"h": -110, "hp": 215.5, "v": -110, "vp": 215.5}]  # New totals
+            }
+        }
+
+        fetcher.apply_delta(delta)
+
+        updated = fetcher.markets["500"]["mkt"]
+        # Spread updated
+        assert updated["s"][0]["h"] == -115
+        assert updated["s"][0]["hp"] == 3.5
+        # Totals added
+        assert "t" in updated
+        assert updated["t"][0]["hp"] == 215.5
+
+    def test_apply_delta_with_status_update(self):
+        """Test that apply_delta handles status updates (lvg field)"""
+        fetcher = MarketFetcher("cookie")
+        fetcher.markets = {
+            "700": {
+                "gid": 700,
+                "lvg": 0  # Not live
+            }
+        }
+
+        # Status update delta
+        delta = {
+            "gid": 700,
+            "lvg": 2  # Now live
+        }
+
+        fetcher.apply_delta(delta)
+
+        # Verify status updated
+        assert fetcher.markets["700"]["lvg"] == 2
 
     def test_get_market_state_not_implemented(self):
         """Test that get_market_state raises NotImplementedError (temporary)"""

@@ -156,8 +156,40 @@ class MarketFetcher:
                 "mkt": {"s": [{"h": -360, "hp": 1.5, "v": 250, "vp": -1.5}]}
             }
         """
-        # TODO: Implement in M3.1.4
-        raise NotImplementedError("apply_delta not yet implemented")
+        gid = delta_message.get('gid')
+        if not gid:
+            logger.warning("Delta missing gid, skipping")
+            return
+
+        gid_str = str(gid)
+
+        # If game exists in cache, update it
+        if gid_str in self.markets:
+            # Merge delta into existing market
+            market = self.markets[gid_str]
+
+            # Update all fields from delta message
+            for key, value in delta_message.items():
+                if key == 'gid':
+                    continue  # Skip gid (already used for lookup)
+
+                if key == 'mkt':
+                    # Merge market data (spread, moneyline, totals)
+                    if 'mkt' not in market:
+                        market['mkt'] = {}
+
+                    # Update each market type in the delta
+                    for market_type, market_data in value.items():
+                        market['mkt'][market_type] = market_data
+                else:
+                    # Update other fields (lvg, mid, sid, lid, etc.)
+                    market[key] = value
+
+            logger.debug(f"Applied delta to existing market {gid_str}")
+        else:
+            # Game not in cache, create new entry from delta
+            self.markets[gid_str] = delta_message.copy()
+            logger.debug(f"Created new market entry from delta for game {gid_str}")
 
     def get_market_state(self, game_id: str) -> Optional[Dict]:
         """
