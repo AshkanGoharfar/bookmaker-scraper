@@ -3,9 +3,14 @@
 
 ---
 
-## 🚀 Quick Start (2 Steps)
+## 🚀 Quick Start (3 Steps)
 
-### 1. Setup
+### 1. Install Dependencies
+```bash
+poetry install
+```
+
+### 2. Setup
 ```bash
 cp .env.example .env
 # Add your session cookie to .env:
@@ -18,13 +23,13 @@ cp .env.example .env
 3. Copy `ASP.NET_SessionId` value
 4. Paste into `.env`
 
-### 2. Run
+### 3. Run
 ```bash
-python main.py              # Run for 30 seconds
-python main.py -d 60        # Run for 60 seconds
+poetry run python main.py              # Run for 30 seconds
+poetry run python main.py -d 60        # Run for 60 seconds
 ```
 
-**That's it.** No dependencies to install, no complex setup.
+**That's it.** Simple setup with Poetry dependency management.
 
 ---
 
@@ -115,6 +120,9 @@ src/
 ## 🧪 Testing
 
 ```bash
+# Install dev dependencies (if not already installed)
+poetry install
+
 # Run all tests (80 tests, 63% coverage)
 poetry run pytest
 
@@ -298,7 +306,16 @@ if health_status["is_healthy"] == False:
 
 ---
 
-**Built with:** Python 3.13, websockets, STOMP protocol, pytest
+## 📦 Requirements
+
+- Python 3.10+
+- Poetry (for dependency management)
+
+**Dependencies:** websockets, aiohttp, python-dotenv, playwright, beautifulsoup4, openai (optional)
+
+---
+
+**Built with:** Python 3.13, Poetry, websockets, STOMP protocol, pytest
 **Time to first odds:** < 10 seconds
 **Throughput:** 48+ messages/second
 **Reliability:** Production-ready
