@@ -213,14 +213,6 @@ bookmaker-scraper/
 
 ---
 
-## 📖 Full Documentation
-
-- **`EXPLANATION.md`**: Complete technical writeup, design decisions, trade-offs
-- **`websocket_findings.md`**: STOMP protocol reverse engineering notes
-- **`.env.example`**: All configuration options with descriptions
-
----
-
 ## 🎯 Assignment Coverage Checklist
 
 - [x] Authenticate using valid session ✅
