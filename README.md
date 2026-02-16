@@ -83,15 +83,6 @@ Sports: BASKETBALL, HOCKEY, JAI ALAI, SOCCER, VOLLEYBALL
 
 ## 🏆 Above & Beyond Features
 
-### **AI-Powered Error Recovery** (Optional)
-```bash
-# Enable AI features by setting OpenAI API key in .env
-OPENAI_API_KEY=your_key_here
-```
-- Autonomous error diagnosis and fix suggestions
-- Natural language error explanations
-- Self-healing capabilities for common failures
-
 ### **Production Monitoring**
 - **Health checks**: Stale data detection, error rate tracking
 - **Connection monitoring**: Automatic reconnection logic
@@ -113,7 +104,6 @@ src/
 - **State management**: Handles initial snapshots + incremental deltas (common pattern)
 - **STOMP protocol**: Used by many betting sites (SBTech, Kambi, etc.)
 - **Health monitoring**: Detects stale data, connection issues, invalid cookies
-- **AI integration**: Can adapt to protocol changes autonomously
 
 ---
 
@@ -177,7 +167,7 @@ See `EXPLANATION.md` for full technical analysis.
 ### **2. STOMP Protocol**
 **Discovery:** Bookmaker uses STOMP over WebSocket (not raw JSON).
 **Implementation:** Custom STOMP client with heartbeat support.
-**Scalability:** STOMP is used by many betting platforms (easy to reuse).
+**Scalability:** Easy to reuse.
 
 ### **3. Health Monitoring**
 **Metrics tracked:**
@@ -191,14 +181,6 @@ See `EXPLANATION.md` for full technical analysis.
 - Invalid cookies (authentication failures)
 - Connection drops (reconnect triggers)
 
-### **4. AI Integration** (Optional)
-**Capabilities:**
-- Diagnose errors from logs/stack traces
-- Suggest fixes in natural language
-- Adapt to protocol changes autonomously
-- Present solutions for human approval
-
-**Example scenario:**
 ```
 ERROR: WebSocket connection failed (HTTP 403)
 AI Diagnosis: "Session cookie expired. Re-authenticate via browser DevTools."
@@ -252,7 +234,6 @@ bookmaker-scraper/
 **Above & Beyond:**
 - [x] AI/tools for scalability ✅
 - [x] Error notifications ✅ (health monitoring)
-- [x] Autonomous error solving ✅ (optional AI integration)
 - [x] Stale/invalid data detection ✅
 - [x] Initial market state + deltas ✅
 - [x] Explanation of method choice ✅
@@ -267,7 +248,6 @@ bookmaker-scraper/
 2. **STOMP reusability**: Many betting sites use STOMP (SBTech, Kambi, Betfair)
 3. **State management pattern**: Initial snapshot + deltas is universal
 4. **Health monitoring**: Critical for production reliability at scale
-5. **AI integration**: Can adapt to protocol changes without code changes
 
 **This isn't just a scraper for one site—it's a framework for scraping many betting sites.**
 
